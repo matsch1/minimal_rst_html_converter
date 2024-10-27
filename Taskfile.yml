@@ -1,0 +1,33 @@
+version: '3'
+
+vars:
+  buildname: gotool
+  treesize: 30
+
+tasks:
+  build: 
+    desc: "go build for actual os"
+    cmds:
+      - |
+        {{if eq .OS "Windows_NT"}}
+          echo Windows build still not supported!
+        {{else}}
+          BUILDNAME={{.buildname}}
+          if [ -e $BUILDNAME ]; then
+            rm $BUILDNAME
+            echo old executable deleted: $BUILDNAME
+          fi
+          go build -o $BUILDNAME
+          echo build succesfully: $BUILDNAME
+        {{end}}
+  run:
+    desc: "build go and run treebuilder"
+    cmds:
+      - task: build
+      - |
+        {{if eq .OS "Windows_NT"}}
+          echo Windows run still not supported!
+        {{else}}
+          BUILDNAME={{.buildname}}
+          ./$BUILDNAME treebuilder {{.treesize}}
+        {{end}}
