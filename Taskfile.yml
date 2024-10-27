@@ -19,7 +19,7 @@ tasks:
           go build -o $BUILDNAME
           echo build succesfully: $BUILDNAME
         {{end}}
-  run:
+  convert-file:
     desc: "build go and run treebuilder"
     cmds:
       - task: build
@@ -28,5 +28,5 @@ tasks:
           echo Windows run still not supported!
         {{else}}
           BUILDNAME={{.buildname}}
-          ./$BUILDNAME --help 
+          ./$BUILDNAME converter --rstcontentfile "input.rst" --htmloutput "index.html" --debug
         {{end}}

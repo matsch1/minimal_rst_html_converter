@@ -2,116 +2,70 @@ package main
 
 import (
 	"fmt"
+	"minimal_rst_html_converter/utils"
 	"os"
-	"regexp"
 	"strings"
+
+	"github.com/alecthomas/kong"
+	"github.com/charmbracelet/log"
 )
 
-// https://www.sphinx-doc.org/en/master/usage/restructuredtext/roles.html#role-math
-
-func latexToHTML(latex string) string {
-	// Replace fractions and powers with HTML
-	latex = regexp.MustCompile(`\\frac{(.*?)}{(.*?)}`).ReplaceAllString(
-		latex,
-		`<span class="frac"><span class="numerator">$1</span><span class="denominator">$2</span></span>`,
-	)
-	// Convert superscripts
-	latex = regexp.MustCompile(`([a-zA-Z0-9]+)\^([a-zA-Z0-9]+)`).ReplaceAllString(latex, `$1<sup>$2</sup>`)
-
-	// Convert subscripts
-	latex = regexp.MustCompile(`([a-zA-Z]+)_{(.*?)}`).ReplaceAllString(latex, `$1<span class="subscript">$2</span>`)
-	latex = regexp.MustCompile(`([a-zA-Z]+)_([a-zA-Z0-9])`).ReplaceAllString(latex, `$1<span class="subscript">$2</span>`)
-
-	// Convert multiplication
-	latex = regexp.MustCompile(`\\cdot`).ReplaceAllString(latex, `&middot;`)
-
-	// Additional replacements for +, =, etc. can go here
-	return latex
-}
-func translateMathToHTML(input string) string {
-	// Define regex to match :math:`...`
-	reMath := regexp.MustCompile(":math:`(.*?)`")
-
-	// Replace LaTeX with HTML
-	output := reMath.ReplaceAllStringFunc(input, func(m string) string {
-		latex := m[7 : len(m)-1] // Extract the part between :math: and `
-		html := latexToHTML(latex)
-		return fmt.Sprintf("<span class='math'>%s</span>", html)
-	})
-	return output
+type Converter struct {
+	Rstcontentfile   string `help:"RST file to convert"`
+	Rstcontentstring string `help:"RST content in string"`
+	Htmloutput       string `help:"outpufile for html content"`
 }
 
-func parseRSTtoHTML(rst string) string {
-	// Convert headings (.. title::)
-	reHeading := regexp.MustCompile(`^(\.\. title::)\s*(.*)`)
-	rst = reHeading.ReplaceAllString(rst, "<h1>$2</h1>")
-
-	// Convert headers of the form "header\n^^^^^^^" to <h1>
-	reh2 := regexp.MustCompile(`(?m)^(.*?)\n\^+$`)
-	rst = reh2.ReplaceAllString(rst, "<h2>$1</h2>")
-
-	// Convert empty lines
-	reempty := regexp.MustCompile(`(?m)^\s*\n`)
-	rst = reempty.ReplaceAllString(rst, "<br>\n")
-
-	// Convert linebreaks (|)
-	relinebreak := regexp.MustCompile(`(?m)^\|`)
-	rst = relinebreak.ReplaceAllString(rst, "<br>\n")
-
-	// Convert bold text
-	reBold := regexp.MustCompile(`\*\*(.*?)\*\*`)
-	rst = reBold.ReplaceAllString(rst, "<b>$1</b>")
-
-	// Convert italic text
-	reItalic := regexp.MustCompile(`\*(.*?)\*`)
-	rst = reItalic.ReplaceAllString(rst, "<i>$1</i>")
-
-	// Convert bullet lists
-	reList := regexp.MustCompile(`(?m)^\s*[-*+]\s+(.*)`)
-	rst = reList.ReplaceAllString(rst, "<li>$1</li>")
-
-	// Define regex to match :math:`...`
-	rst = translateMathToHTML(rst)
-
-	// Return final HTML
-	return strings.TrimSpace(rst)
-}
-
-func writeHTMLToFile(html string, filename string) error {
-	// Create or overwrite the HTML file
-	file, err := os.Create(filename)
-	if err != nil {
-		return err
+func (c *Converter) Run() error {
+	log.Debug("Converter Run")
+	rstContent, errgetrst := c.getRstContent()
+	if errgetrst != nil {
+		log.Error("error get rst content: ", "err", errgetrst)
 	}
-	defer file.Close()
+	htmlContent := utils.ParseRSTtoHTML(rstContent)
+	if c.Htmloutput != "" {
+		utils.WriteHTMLToFile(htmlContent, c.Htmloutput)
+	}
+	log.Info(htmlContent)
 
-	// Write the HTML content to the file
-	_, err = file.WriteString(html)
-	return err
+	return nil
+}
+func (c *Converter) getRstContent() (string, error) {
+	log.Debug("getRstContent")
+	if c.Rstcontentstring != "" {
+		return c.Rstcontentstring, nil
+	} else if c.Rstcontentfile != "" {
+		if strings.Contains(c.Rstcontentfile, ".rst") {
+			rstbyte, errreadfile := os.ReadFile(c.Rstcontentfile)
+			rstContent := string(rstbyte)
+			if errreadfile != nil {
+				return "", fmt.Errorf("error: %s", errreadfile)
+			}
+			return rstContent, nil
+		} else {
+			return "", fmt.Errorf("error: input is no RST file")
+		}
+	} else {
+		return "", fmt.Errorf("nothing to convert")
+	}
+}
+
+var cli struct {
+	Debug     bool      `help:"activate debug loggin" `
+	Converter Converter `cmd:"" help:"converter"`
 }
 
 func main() {
-	rstbyte, err := os.ReadFile("input.rst")
-	rstContent := string(rstbyte)
-	if err != nil {
-		fmt.Printf("Error reading file: %v\n", err)
-		os.Exit(1)
-	}
-	stylebyte, err := os.ReadFile("style.html")
-	styleContent := string(stylebyte)
-	if err != nil {
-		fmt.Printf("Error reading file: %v\n", err)
-		os.Exit(1)
+
+	ctx := kong.Parse(&cli)
+	if cli.Debug {
+		log.SetLevel(log.DebugLevel)
+		log.Debug("log debuglevel active")
 	}
 
-	html := parseRSTtoHTML(rstContent)
-
-	// Write HTML to a file
-	filename := "index.html"
-	if err := writeHTMLToFile(styleContent+"\n"+html, filename); err != nil {
-		fmt.Printf("Error writing HTML to file: %v\n", err)
-		return
+	errrun := ctx.Run()
+	if errrun != nil {
+		log.Error("error: ", "err", errrun)
 	}
 
-	fmt.Printf("HTML successfully written to %s\n", filename)
 }
