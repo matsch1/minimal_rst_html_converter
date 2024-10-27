@@ -2,7 +2,6 @@ version: '3'
 
 vars:
   buildname: gotool
-  treesize: 30
 
 tasks:
   build: 
@@ -29,5 +28,5 @@ tasks:
           echo Windows run still not supported!
         {{else}}
           BUILDNAME={{.buildname}}
-          ./$BUILDNAME treebuilder {{.treesize}}
+          ./$BUILDNAME --help 
         {{end}}
